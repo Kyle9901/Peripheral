@@ -1,0 +1,50 @@
+menu "InstaCare 传感器配置"
+
+    choice INSTACARE_DHT_MODEL
+        prompt "DHT 温湿度传感器型号"
+        default INSTACARE_DHT_MODEL_DHT11
+
+        config INSTACARE_DHT_MODEL_DHT11
+            bool "DHT11"
+
+        config INSTACARE_DHT_MODEL_DHT22
+            bool "DHT22/AM2302"
+    endchoice
+
+    config INSTACARE_DHT_GPIO
+        int "DHT 数据引脚"
+        range 0 48
+        default 4
+
+    config INSTACARE_PIR_GPIO
+        int "HC-SR501 输出引脚"
+        range 0 48
+        default 5
+
+    config INSTACARE_BH1750_SDA_GPIO
+        int "BH1750 I2C SDA 引脚"
+        range 0 48
+        default 21
+
+    config INSTACARE_BH1750_SCL_GPIO
+        int "BH1750 I2C SCL 引脚"
+        range 0 48
+        default 18
+        help
+            ESP32-S3 不支持 GPIO22，因此默认使用 GPIO18。
+
+    config INSTACARE_BH1750_ADDRESS
+        hex "BH1750 I2C 地址"
+        range 0x08 0x77
+        default 0x23
+        help
+            ADDR 接地时为 0x23，ADDR 接高电平时通常为 0x5C。
+
+    config INSTACARE_SENSOR_REPORT_INTERVAL_MS
+        int "采样与上报间隔（毫秒）"
+        range 2000 3600000
+        default 5000
+        help
+            DHT11 和 DHT22 的采样间隔均不能小于 2 秒。
+
+endmenu

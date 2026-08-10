@@ -1,0 +1,26 @@
+idf_component_register(
+    SRCS
+        main.c
+        ble_prov.c
+        dev_info.c
+        status.c
+        cert_chain.c
+        network_config.c
+        connectivity.c
+        tlv_protocol.c
+        dht_sensor.c
+        bh1750.c
+        sensor_manager.c
+    INCLUDE_DIRS
+        .
+    REQUIRES
+        bt
+        esp_event
+        esp_driver_gpio
+        esp_driver_i2c
+        esp_netif
+        esp_wifi
+        json
+        lwip
+        nvs_flash
+)
