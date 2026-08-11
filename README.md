@@ -1,84 +1,79 @@
-# InstaCare Peripheral — ESP32 设备端
+# InstaCare Matter 多传感器
 
-基于 [InstaCare 设备接入协议](./docs/provisioning.md) 实现的 ESP32 Peripheral 设备端。
+ESP32-S3 原生 Matter over Wi-Fi 多传感器固件，使用官方 ESP-IDF 和
+Espressif ESP-Matter 托管组件构建。设备可由 Home Assistant 的 Matter
+集成直接配网，不再依赖 Central、私有 TCP 长连接或自定义 TLV 协议。
 
-## 已实现功能
+## 功能
 
-- [x] BLE 5 Extended Advertising（128-bit Service UUID + 20 字节 Service Data）
-- [x] GATT Provisioning Service（4 个特征）
-  - `DeviceInfo` (Read) — 设备信息 JSON
-  - `CertificateChain` (Read) — 设备证书链（二进制）
-  - `NetworkConfig` (Write) — 接收 Wi-Fi 配置
-  - `Status` (Read/Notify) — 配网状态上报
-- [x] 设备证书链 DER 编码
-- [x] 状态机：`idle → config_received → ... → operational`
-- [x] 长读写 / Prepare Write / Execute Write 支持
-- [x] NVS 持久化 device_id / config_revision
-- [x] Wi-Fi STA 连接（配置校验、NVS 恢复、错误状态、全抖动退避）
-- [x] TCP 长连接（DNS/IPv4/IPv6、连接超时、keepalive、自动重连）
-- [x] TLV 帧通信（会话、注册、心跳、Action 拒绝响应、遥测入口）
-- [x] DHT11/DHT22 温湿度采集（可配置，默认 DHT11）
-- [x] BH1750 光照采集
-- [x] HC-SR501 人体红外采集
-- [x] 传感器数据周期 TLV 上报
+- DHT11（默认）或 DHT22：温度、相对湿度
+- BH1750：环境光照度
+- HC-SR501：人体移动与占用状态
+- Matter BLE 配网和 Wi-Fi 运行
+- 四个标准 Matter 传感器 Endpoint
+- Home Assistant 可直接发现实体并订阅属性变化
 
-## 网络与 TLV 流程
+Matter Endpoint 和数值编码见 [Matter 接口说明](docs/matter.md)。
 
-`NetworkConfig` 会使用 cJSON 完整解析并校验，Wi-Fi 密码不会写入日志。
-设备重启后会从 NVS 恢复最后接受的配置并自动重连。TCP 会话只有在收到
-`session.ready` 后注册清单，并在收到 `action.registered` 后才进入
-`operational`。
-
-设备 Action 协议原文目前不在仓库内，因此 TLV tag 和临时载荷约定记录在
-[docs/tlv-protocol.md](docs/tlv-protocol.md)。正式发布前应使用规范中的签名
-`session.open` 载荷替换当前 challenge 回显载荷。
-
-## 传感器接线
-
-ESP32-S3 没有 GPIO22，因此 BH1750 的 SCL 默认使用 GPIO18。
+## 接线
 
 | 传感器 | 传感器引脚 | ESP32-S3 | 供电 |
 | --- | --- | --- | --- |
-| DHT11（默认）或 DHT22 | DATA | GPIO4 | 3.3V |
+| DHT11/DHT22 | DATA | GPIO4 | 3.3V |
 | BH1750 | SDA | GPIO21 | 3.3V |
 | BH1750 | SCL | GPIO18 | 3.3V |
-| HC-SR501 | OUT | GPIO5 | 模块 VCC 接 5V，OUT 接 GPIO5 |
+| HC-SR501 | OUT | GPIO5 | VCC 接 5V，OUT 接 GPIO5 |
 
-所有模块必须与 ESP32 共地。裸 DHT11/DHT22 的 DATA 与 3.3V 之间需要约 4.7k
-上拉电阻；BH1750 裸板的 SDA/SCL 也需要 I2C 上拉，常见模块板已自带。
-HC-SR501 上电后通常需要约 30–60 秒预热，预热期间输出可能不稳定。
+所有模块必须与 ESP32 共地。裸 DHT 数据线需要约 4.7 kΩ 上拉电阻；常见
+BH1750 模块板通常自带 I2C 上拉。HC-SR501 上电后需预热约 30–60 秒。
 
-DHT11 与 DHT22 接线相同，但启动时序和数据编码不同，不能直接共用同一种
-解码方式。本项目默认选择 DHT11；如改用 DHT22，可在 `menuconfig` 的
-`InstaCare 传感器配置 → DHT 温湿度传感器型号` 中切换。
+## 开发环境
 
-默认每 5 秒采样一次。引脚、BH1750 地址和采样间隔可通过以下命令修改：
+- ESP-IDF 5.4 系列（本机路径为 `/home/alkaid/esp/esp-idf`）
+- ESP-Matter 1.4.0，由 IDF Component Manager 根据
+  `main/idf_component.yml` 下载
+- 目标芯片：ESP32-S3 N8R2，8 MiB Flash、2 MiB OPI PSRAM
+
+本项目不再支持 PlatformIO；请统一使用官方 `idf.py`。
+
+## 编译与烧录
+
+```bash
+cd /home/alkaid/Peripheral
+source /home/alkaid/esp/esp-idf/export.sh
+idf.py set-target esp32s3
+idf.py build
+idf.py -p /dev/ttyACM0 flash monitor
+```
+
+从旧版 TLV 固件首次切换到 Matter 固件时，建议先清除旧分区和 NVS：
+
+```bash
+idf.py -p /dev/ttyACM0 erase-flash
+idf.py -p /dev/ttyACM0 flash monitor
+```
+
+## Home Assistant 配网
+
+1. 确认 Home Assistant 已安装并运行 Matter Server 集成。
+2. ESP32 启动后，从串口日志读取 Matter 二维码或手动配对码。
+3. 在 Home Assistant 手机 App 中选择“添加 Matter 设备”并扫码。
+4. 配网完成后，设备通过局域网 IPv6/Matter 与 Matter Server 通信。
+
+`ws://localhost:5580/ws` 是 Home Assistant Core 与 Matter Server 之间的
+WebSocket 地址，不是 ESP32 的通信目标，ESP32 无需连接该地址。
+
+当前启用了 ESP-Matter 测试配网数据和测试 DAC，仅用于开发验证。正式产品必须
+烧录每台设备唯一的 DAC/PAI/CD、配对码和合法的 Vendor ID/Product ID。
+
+## 修改传感器配置
 
 ```bash
 idf.py menuconfig
-# InstaCare 传感器配置
+# InstaCare Matter 传感器配置
 ```
 
-设备进入 `operational` 后会通过 TLV `telemetry` 帧上报：温度、湿度、光照、
-当前人体感应状态，以及本上报周期内是否曾检测到人体移动。离线期间继续采样，
-但当前版本不缓存历史遥测。
-
-## 构建
-
-```bash
-# 安装 ESP-IDF v5.0+
-# 设置 Python 依赖
-pip install cryptography
-
-# 生成测试证书
-python scripts/generate_certs.py --device-id <32位hex> --output main/cert_chain.c
-
-# 编译烧录
-idf.py set-target esp32
-idf.py build
-idf.py flash monitor
-```
-
-## 配置
-
-编辑 `main/dev_info.c` 中的设备信息，或通过 `idf.py menuconfig` 配置。
+可修改 DHT 型号、GPIO、BH1750 地址、采样间隔，以及 PIR 触发后的 Matter
+占用默认保持时间。默认每 5 秒更新属性，占用状态默认保持 30 秒。配网后，
+Matter 控制器可写 Endpoint 4、Cluster `0x0406`、Attribute `0x0010`
+（`PIROccupiedToUnoccupiedDelay`，单位为秒）在线调整为 1–600 秒；新值会持久化。

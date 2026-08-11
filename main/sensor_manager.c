@@ -1,39 +1,41 @@
 #include "sensor_manager.h"
 
 #include "bh1750.h"
-#include "connectivity.h"
 #include "dht_sensor.h"
-#include "status.h"
 
 #include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include <stdio.h>
-#include <string.h>
+#include <stdatomic.h>
 
 static const char *TAG = "sensors";
 
 #define SENSOR_POLL_INTERVAL_MS 250
+#define DEFAULT_OCCUPANCY_HOLD_SECONDS \
+    ((CONFIG_INSTACARE_OCCUPANCY_HOLD_MS + 999) / 1000)
 
 static bh1750_t s_bh1750;
 static bool s_bh1750_ready;
 static SemaphoreHandle_t s_reading_mutex;
 static sensor_reading_t s_latest;
 static bool s_has_reading;
-static uint32_t s_telemetry_sequence;
+static sensor_reading_callback_t s_reading_callback;
+static void *s_reading_callback_context;
+static atomic_uint_fast16_t s_occupancy_hold_seconds =
+    DEFAULT_OCCUPANCY_HOLD_SECONDS;
 
 #if CONFIG_INSTACARE_DHT_MODEL_DHT11
 #define INSTACARE_DHT_MODEL DHT_SENSOR_MODEL_DHT11
 #define INSTACARE_DHT_MODEL_NAME "DHT11"
-#define INSTACARE_DHT_MODEL_ID "dht11"
 #else
 #define INSTACARE_DHT_MODEL DHT_SENSOR_MODEL_DHT22
 #define INSTACARE_DHT_MODEL_NAME "DHT22"
-#define INSTACARE_DHT_MODEL_ID "dht22"
 #endif
 
 static esp_err_t init_pir(void)
@@ -62,54 +64,6 @@ static void number_or_null(char *buffer, size_t buffer_size,
     }
 }
 
-static void publish_reading(const sensor_reading_t *reading)
-{
-    char temperature[24];
-    char humidity[24];
-    char illuminance[24];
-    number_or_null(temperature, sizeof(temperature), reading->dht_valid,
-                   reading->temperature_c);
-    number_or_null(humidity, sizeof(humidity), reading->dht_valid,
-                   reading->humidity_percent);
-    number_or_null(illuminance, sizeof(illuminance), reading->bh1750_valid,
-                   reading->illuminance_lux);
-
-    char json[512];
-    int length = snprintf(
-        json, sizeof(json),
-        "{"
-        "\"spec\":\"instacare.device/1.0\","
-        "\"sequence\":%lu,"
-        "\"uptime_ms\":%lu,"
-        "\"dht_model\":\"%s\","
-        "\"values\":{"
-        "\"temperature_c\":%s,"
-        "\"humidity_percent\":%s,"
-        "\"illuminance_lux\":%s,"
-        "\"motion\":%s,"
-        "\"motion_detected\":%s"
-        "},"
-        "\"quality\":{\"dht\":\"%s\",\"bh1750\":\"%s\"}"
-        "}",
-        (unsigned long)s_telemetry_sequence,
-        (unsigned long)reading->sampled_at_ms,
-        INSTACARE_DHT_MODEL_ID,
-        temperature, humidity, illuminance,
-        reading->motion ? "true" : "false",
-        reading->motion_detected ? "true" : "false",
-        reading->dht_valid ? "ok" : "read_error",
-        reading->bh1750_valid ? "ok" : "read_error");
-    if (length <= 0 || length >= sizeof(json)) {
-        ESP_LOGE(TAG, "遥测 JSON 超出缓冲区");
-        return;
-    }
-    if (connectivity_send_telemetry(json) == 0) {
-        ESP_LOGI(TAG, "遥测已发送，sequence=%lu",
-                 (unsigned long)s_telemetry_sequence);
-        s_telemetry_sequence++;
-    }
-}
-
 static void store_latest(const sensor_reading_t *reading)
 {
     if (xSemaphoreTake(s_reading_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -119,12 +73,12 @@ static void store_latest(const sensor_reading_t *reading)
     }
 }
 
-static void sample_sensors(bool motion_detected)
+static void sample_sensors(bool occupied)
 {
     sensor_reading_t reading = {
         .motion = gpio_get_level((gpio_num_t)CONFIG_INSTACARE_PIR_GPIO) != 0,
-        .motion_detected = motion_detected,
-        .sampled_at_ms = status_get_uptime_ms(),
+        .occupied = occupied,
+        .sampled_at_ms = (uint32_t)(esp_timer_get_time() / 1000ULL),
     };
 
     dht_sensor_reading_t dht_reading;
@@ -158,16 +112,18 @@ static void sample_sensors(bool motion_detected)
     number_or_null(illuminance, sizeof(illuminance), reading.bh1750_valid,
                    reading.illuminance_lux);
     ESP_LOGI(TAG,
-             "温度=%s%s 湿度=%s%s 光照=%s%s 人体=%s 本周期触发=%s",
+             "温度=%s%s 湿度=%s%s 光照=%s%s PIR电平=%s Matter占用=%s",
              temperature,
              reading.dht_valid ? " C" : "",
              humidity,
              reading.dht_valid ? " %" : "",
              illuminance,
              reading.bh1750_valid ? " lux" : "",
-             reading.motion ? "有" : "无",
-             reading.motion_detected ? "是" : "否");
-    publish_reading(&reading);
+             reading.motion ? "高" : "低",
+             reading.occupied ? "是" : "否");
+    if (s_reading_callback != NULL) {
+        s_reading_callback(&reading, s_reading_callback_context);
+    }
 }
 
 static void sensor_task(void *argument)
@@ -178,24 +134,31 @@ static void sensor_task(void *argument)
     TickType_t report_interval = pdMS_TO_TICKS(
         CONFIG_INSTACARE_SENSOR_REPORT_INTERVAL_MS);
     TickType_t next_report = xTaskGetTickCount();
-    bool motion_detected = false;
-
+    TickType_t last_motion = 0;
+    bool has_detected_motion = false;
     while (true) {
         if (gpio_get_level((gpio_num_t)CONFIG_INSTACARE_PIR_GPIO) != 0) {
-            motion_detected = true;
+            last_motion = xTaskGetTickCount();
+            has_detected_motion = true;
         }
         TickType_t now = xTaskGetTickCount();
         if ((int32_t)(now - next_report) >= 0) {
-            sample_sensors(motion_detected);
-            motion_detected = false;
+            uint16_t hold_seconds = sensor_manager_get_occupancy_hold_seconds();
+            TickType_t occupancy_hold = pdMS_TO_TICKS(
+                (uint32_t)hold_seconds * 1000U);
+            bool occupied = has_detected_motion &&
+                (TickType_t)(now - last_motion) <= occupancy_hold;
+            sample_sensors(occupied);
             next_report = now + report_interval;
         }
         vTaskDelay(pdMS_TO_TICKS(SENSOR_POLL_INTERVAL_MS));
     }
 }
 
-int sensor_manager_init(void)
+int sensor_manager_init(sensor_reading_callback_t callback, void *context)
 {
+    s_reading_callback = callback;
+    s_reading_callback_context = context;
     s_reading_mutex = xSemaphoreCreateMutex();
     if (s_reading_mutex == NULL) {
         return -1;
@@ -229,14 +192,33 @@ int sensor_manager_init(void)
         return -1;
     }
     ESP_LOGI(TAG,
-             "传感器已启动：%s=GPIO%d, PIR=GPIO%d, BH1750 SDA=%d SCL=%d 地址=0x%02x",
+             "传感器已启动：%s=GPIO%d, PIR=GPIO%d, BH1750 SDA=%d SCL=%d 地址=0x%02x，占用保持=%u秒",
              INSTACARE_DHT_MODEL_NAME, CONFIG_INSTACARE_DHT_GPIO,
              CONFIG_INSTACARE_PIR_GPIO,
              CONFIG_INSTACARE_BH1750_SDA_GPIO,
              CONFIG_INSTACARE_BH1750_SCL_GPIO,
              s_bh1750_ready ? s_bh1750.address
-                            : CONFIG_INSTACARE_BH1750_ADDRESS);
+                            : CONFIG_INSTACARE_BH1750_ADDRESS,
+             sensor_manager_get_occupancy_hold_seconds());
     return 0;
+}
+
+int sensor_manager_set_occupancy_hold_seconds(uint16_t seconds)
+{
+    if (seconds < SENSOR_OCCUPANCY_HOLD_MIN_SECONDS ||
+        seconds > SENSOR_OCCUPANCY_HOLD_MAX_SECONDS) {
+        return -1;
+    }
+    atomic_store_explicit(&s_occupancy_hold_seconds, seconds,
+                          memory_order_relaxed);
+    ESP_LOGI(TAG, "占用保持时间已调整为 %u 秒", seconds);
+    return 0;
+}
+
+uint16_t sensor_manager_get_occupancy_hold_seconds(void)
+{
+    return (uint16_t)atomic_load_explicit(&s_occupancy_hold_seconds,
+                                          memory_order_relaxed);
 }
 
 bool sensor_manager_get_latest(sensor_reading_t *reading)

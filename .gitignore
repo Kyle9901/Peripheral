@@ -1,13 +1,11 @@
 # ESP-IDF / CMake 构建产物
 /build/
 /managed_components/
-/dependencies.lock
 
-# PlatformIO 构建与本机缓存
-/.pio/
+# 本机缓存
 /.cache/
 
-# ESP-IDF 自动生成的配置；可复现配置保存在 sdkconfig.defaults / sdkconfig.pio
+# ESP-IDF 自动生成的配置；可复现配置保存在 sdkconfig.defaults
 /sdkconfig
 /sdkconfig.old
 
@@ -16,8 +14,8 @@
 /.vscode/
 /.idea/
 
-# 设备证书和私钥由 scripts/generate_certs.py 在本机生成
-/certs/*.pem
+# 生产凭据不得提交到仓库
+/certs/
 *.key
 *.p12
 *.pfx

@@ -1,4 +1,11 @@
-# 名称,   类型, 子类型,  偏移,     大小,     标志
-nvs,      data, nvs,     0x9000,   0x6000,
-phy_init, data, phy,     0xf000,   0x1000,
-factory,  app,  factory, 0x10000,  0x200000,
+# 名称,            类型, 子类型,       偏移,      大小,      标志
+# 分区表位于 0xC000；ESP32-S3 N8R2 使用 8 MiB Flash。
+esp_secure_cert,   0x3F, ,             0xD000,    0x2000,    encrypted
+nvs,               data, nvs,          0x10000,   0xC000,
+nvs_keys,          data, nvs_keys,      0x1C000,   0x1000,    encrypted
+otadata,           data, ota,           0x1D000,   0x2000,
+phy_init,          data, phy,           0x1F000,   0x1000,
+ota_0,             app,  ota_0,         0x20000,   0x300000,
+ota_1,             app,  ota_1,         0x320000,  0x300000,
+fctry,             data, nvs,           0x620000,  0x6000,
+coredump,          data, coredump,      0x626000,  0x10000,

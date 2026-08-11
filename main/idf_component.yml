@@ -1,0 +1,4 @@
+dependencies:
+  # Matter 1.4 与本项目使用的 ESP-IDF 5.4 系列配套。
+  espressif/esp_matter:
+    version: "1.4.0"

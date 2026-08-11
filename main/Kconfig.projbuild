@@ -1,4 +1,4 @@
-menu "InstaCare 传感器配置"
+menu "InstaCare Matter 传感器配置"
 
     choice INSTACARE_DHT_MODEL
         prompt "DHT 温湿度传感器型号"
@@ -41,10 +41,20 @@ menu "InstaCare 传感器配置"
             ADDR 接地时为 0x23，ADDR 接高电平时通常为 0x5C。
 
     config INSTACARE_SENSOR_REPORT_INTERVAL_MS
-        int "采样与上报间隔（毫秒）"
+        int "采样与 Matter 属性更新间隔（毫秒）"
         range 2000 3600000
         default 5000
         help
             DHT11 和 DHT22 的采样间隔均不能小于 2 秒。
+
+    config INSTACARE_OCCUPANCY_HOLD_MS
+        int "人体占用默认保持时间（毫秒）"
+        range 1000 600000
+        default 30000
+        help
+            PIR 检测到移动后，Occupancy 属性首次启动时保持为有人状态的时长。
+            配网后可通过 Matter 的 PIROccupiedToUnoccupiedDelay 属性动态调整，
+            调整值由 ESP-Matter 持久化，设备重启后继续生效。
+            HC-SR501 只能检测移动，不能检测静止人体，因此建议不少于 30 秒。
 
 endmenu
