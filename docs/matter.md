@@ -1,5 +1,7 @@
 # Matter 接口说明
 
+硬件型号、供电和 GPIO 接线请参阅[硬件与 GPIO 接线技术文档](hardware.md)。
+
 ## 通信结构
 
 设备使用 Matter over Wi-Fi。蓝牙仅用于首次 Commissioning，Home Assistant

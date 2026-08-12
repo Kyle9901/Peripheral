@@ -6,33 +6,22 @@ Espressif ESP-Matter 托管组件构建。设备可由 Home Assistant 的 Matter
 
 ## 功能
 
-- DHT11（默认）或 DHT22：温度、相对湿度
-- BH1750：环境光照度
-- HC-SR501：人体移动与占用状态
+- 温度、相对湿度和环境光照度采集
+- 人体移动检测与 Matter 占用状态
 - Matter BLE 配网和 Wi-Fi 运行
 - 四个标准 Matter 传感器 Endpoint
 - Home Assistant 可直接发现实体并订阅属性变化
 
-Matter Endpoint 和数值编码见 [Matter 接口说明](docs/matter.md)。
+## 文档
 
-## 接线
-
-| 传感器 | 传感器引脚 | ESP32-S3 | 供电 |
-| --- | --- | --- | --- |
-| DHT11/DHT22 | DATA | GPIO4 | 3.3V |
-| BH1750 | SDA | GPIO21 | 3.3V |
-| BH1750 | SCL | GPIO18 | 3.3V |
-| HC-SR501 | OUT | GPIO5 | VCC 接 5V，OUT 接 GPIO5 |
-
-所有模块必须与 ESP32 共地。裸 DHT 数据线需要约 4.7 kΩ 上拉电阻；常见
-BH1750 模块板通常自带 I2C 上拉。HC-SR501 上电后需预热约 30–60 秒。
+- [硬件型号、供电与 GPIO 接线](docs/hardware.md)
+- [Matter Endpoint、属性与数据编码](docs/matter.md)
 
 ## 开发环境
 
 - ESP-IDF 5.4 系列（本机路径为 `/home/alkaid/esp/esp-idf`）
 - ESP-Matter 1.4.0，由 IDF Component Manager 根据
   `main/idf_component.yml` 下载
-- 目标芯片：ESP32-S3 N8R2，8 MiB Flash、2 MiB OPI PSRAM
 
 本项目不再支持 PlatformIO；请统一使用官方 `idf.py`。
 
@@ -73,7 +62,6 @@ idf.py menuconfig
 # InstaCare Matter 传感器配置
 ```
 
-可修改 DHT 型号、GPIO、BH1750 地址、采样间隔，以及 PIR 触发后的 Matter
-占用默认保持时间。默认每 5 秒更新属性，占用状态默认保持 30 秒。配网后，
-Matter 控制器可写 Endpoint 4、Cluster `0x0406`、Attribute `0x0010`
-（`PIROccupiedToUnoccupiedDelay`，单位为秒）在线调整为 1–600 秒；新值会持久化。
+传感器型号、GPIO、总线地址和采样参数的配置说明见
+[硬件与 GPIO 接线技术文档](docs/hardware.md)。Matter 属性及动态占用保持时间的
+接口说明见 [Matter 接口说明](docs/matter.md)。
