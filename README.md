@@ -1,15 +1,16 @@
-# InstaCare Matter 多传感器
+# InstaCare Matter 传感器设备
 
-ESP32-S3 原生 Matter over Wi-Fi 多传感器固件，使用官方 ESP-IDF 和
+ESP32-S3 原生 Matter over Wi-Fi 传感器固件，使用官方 ESP-IDF 和
 Espressif ESP-Matter 托管组件构建。设备可由 Home Assistant 的 Matter
-集成直接配网，不再依赖 Central、私有 TCP 长连接或自定义 TLV 协议。
+集成直接配网，并通过标准 Matter 属性上报传感器数据。
 
 ## 功能
 
 - 温度、相对湿度和环境光照度采集
 - 人体移动检测与 Matter 占用状态
 - Matter BLE 配网和 Wi-Fi 运行
-- 四个标准 Matter 传感器 Endpoint
+- 单一固件自动识别当前接入的传感器并按需发布 Matter Endpoint
+- PIR 默认不发布，GPIO 首次输出有效高电平后自动登记并实时上报
 - Home Assistant 可直接发现实体并订阅属性变化
 
 ## 文档
@@ -25,20 +26,22 @@ Espressif ESP-Matter 托管组件构建。设备可由 Home Assistant 的 Matter
 
 本项目不再支持 PlatformIO；请统一使用官方 `idf.py`。
 
+## 传感器识别
+
+固件启动时读取 DHT11/DHT22，并探测 BH1750 的 `0x23`、`0x5C` 地址，只为成功
+应答的传感器发布 Matter Endpoint。未接光照模块时不会在 Home Assistant 中创建
+照度实体。
+
+HC-SR501 无法通过协议区分“没有接入”和“暂时没有移动”，所以初始状态为未识别。
+GPIO 连续三次采到高电平后登记为已接入并保存到 NVS，随后创建人体占用 Endpoint。
+不同 ESP32 是独立 Matter 节点，各自保存 Wi-Fi、Fabric 和传感器登记状态。
+
 ## 编译与烧录
 
 ```bash
 cd /home/alkaid/Peripheral
 source /home/alkaid/esp/esp-idf/export.sh
-idf.py set-target esp32s3
 idf.py build
-idf.py -p /dev/ttyACM0 flash monitor
-```
-
-从旧版 TLV 固件首次切换到 Matter 固件时，建议先清除旧分区和 NVS：
-
-```bash
-idf.py -p /dev/ttyACM0 erase-flash
 idf.py -p /dev/ttyACM0 flash monitor
 ```
 

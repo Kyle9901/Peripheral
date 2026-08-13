@@ -46,6 +46,7 @@ menu "InstaCare Matter 传感器配置"
         default 5000
         help
             DHT11 和 DHT22 的采样间隔均不能小于 2 秒。
+            人体占用状态独立以 250 ms 周期检测并在变化时立即上报。
 
     config INSTACARE_OCCUPANCY_HOLD_MS
         int "人体占用默认保持时间（毫秒）"

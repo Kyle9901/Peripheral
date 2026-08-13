@@ -1,5 +1,6 @@
 # ESP-IDF / CMake 构建产物
 /build/
+/build-*/
 /managed_components/
 
 # 本机缓存
@@ -8,14 +9,15 @@
 # ESP-IDF 自动生成的配置；可复现配置保存在 sdkconfig.defaults
 /sdkconfig
 /sdkconfig.old
+/sdkconfig.*
+!/sdkconfig.defaults
 
 # 本机 IDE / Agent 配置
 /.claude/settings.local.json
 /.vscode/
 /.idea/
 
-# 生产凭据不得提交到仓库
-/certs/
+# 生产私钥不得提交到仓库
 *.key
 *.p12
 *.pfx

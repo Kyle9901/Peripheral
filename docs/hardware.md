@@ -1,6 +1,6 @@
 # 硬件与 GPIO 接线技术文档
 
-本文档说明 InstaCare Matter 多传感器设备使用的硬件、供电方式、GPIO 分配和
+本文档说明 InstaCare Matter 传感器设备使用的硬件、供电方式、GPIO 分配和
 接线要求。文中的 GPIO 编号均为 ESP32-S3 芯片的 GPIO 编号，不是排针的物理
 序号；接线前应以开发板丝印为准。
 
@@ -22,7 +22,7 @@
 | 项目 | 参数 |
 | --- | --- |
 | 芯片 | ESP32-S3 |
-| Flash | 16 MiB |
+| Flash | 16 MiB（当前固件镜像和分区表按 8 MiB 使用） |
 | PSRAM | 8 MiB |
 | 无线连接 | 2.4 GHz Wi-Fi、Bluetooth LE |
 | 日志与烧录接口 | USB Serial/JTAG，通常显示为 `/dev/ttyACM0` |
@@ -102,6 +102,9 @@ HC-SR501 的 `H/L` 跳帽控制硬件触发方式：
 “有人”状态，默认 30 秒；这个软件保持时间与模块电位器的硬件延时是两个不同
 参数。
 
+只接 HC-SR501 时连接本节的三根线即可，不需要选择另一套固件；自动探测会让
+Matter 只发布人体占用 Endpoint。
+
 ## 5. 接线关系示意
 
 ```text
@@ -156,10 +159,11 @@ InstaCare Matter 传感器配置
 ```
 
 可配置内容包括 DHT 型号、DHT GPIO、PIR GPIO、BH1750 SDA/SCL、BH1750 地址、
-采样周期和 PIR 占用默认保持时间。修改 GPIO 后必须同步修改实际接线。
+采样周期和 PIR 占用默认保持时间。修改 GPIO 后必须同步修改实际接线。传感器数量
+无需在编译时选择，固件会根据实际接线自动探测并生成 Matter Endpoint。
 
 当前默认采样与 Matter 属性更新时间为 5 秒。PIR 软件占用保持时间默认为 30 秒，
-配对后还可以通过 Matter Endpoint 4、Cluster `0x0406`、Attribute `0x0010`
+配对后还可以通过 Occupancy Sensor Endpoint、Cluster `0x0406`、Attribute `0x0010`
 在线调整为 1–600 秒。
 
 ## 8. 上电检查
@@ -176,7 +180,8 @@ InstaCare Matter 传感器配置
 正常日志示例：
 
 ```text
-传感器已启动：DHT11=GPIO4, PIR=GPIO5, BH1750 SDA=21 SCL=18 地址=0x23，占用保持=30秒
+自动探测结果：温湿度=有 光照=有 人体红外=已登记
+传感器管理已启动：采样=5000ms，重扫=30000ms，占用保持=30秒
 温度=24.0 C 湿度=60.1 % 光照=109.2 lux PIR电平=低 Matter占用=否
 ```
 
